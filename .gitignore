@@ -53,3 +53,19 @@ dkms.conf
 
 # debug information files
 *.dwo
+
+# CUDA / NVCC intermediate artifacts
+*.ptx
+*.cubin
+*.fatbin
+*.nvvp
+*.cudafe1.cpp
+*.cudafe1.stub.c
+*.module_id
+tmpxft_*
+
+# Visual Studio workspace artifacts
+.vs/
+
+# Build script
+build_run.bat
