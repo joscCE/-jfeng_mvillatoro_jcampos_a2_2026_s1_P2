@@ -1,0 +1,10 @@
+{
+  "code-runner.runInTerminal": true,
+  "code-runner.fileDirectoryAsCwd": true,
+  "code-runner.executorMap": {
+    "c": "$env:Path='C:\\msys64\\ucrt64\\bin;'+$env:Path; & 'C:\\msys64\\ucrt64\\bin\\gcc.exe' -Wall -g '$workspaceRoot\\src\\main.c' '$workspaceRoot\\src\\secuencial.c' -o '$workspaceRoot\\main.exe' -IC:/msys64/ucrt64/include/SDL2 -LC:/msys64/ucrt64/lib -lmingw32 -lSDL2main -lSDL2; if ($?) { & '$workspaceRoot\\main.exe' }"
+  },
+  "code-runner.executorMapByFileExtension": {
+    ".c": "$env:Path='C:\\msys64\\ucrt64\\bin;'+$env:Path; & 'C:\\msys64\\ucrt64\\bin\\gcc.exe' -Wall -g '$workspaceRoot\\src\\main.c' '$workspaceRoot\\src\\secuencial.c' -o '$workspaceRoot\\main.exe' -IC:/msys64/ucrt64/include/SDL2 -LC:/msys64/ucrt64/lib -lmingw32 -lSDL2main -lSDL2; if ($?) { & '$workspaceRoot\\main.exe' }"
+  }
+}
