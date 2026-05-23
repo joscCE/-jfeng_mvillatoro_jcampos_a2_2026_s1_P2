@@ -69,3 +69,7 @@ tmpxft_*
 
 # Build script
 build_run.bat
+
+# Executables por version
+main_gpu.exe
+main_seq.exe
