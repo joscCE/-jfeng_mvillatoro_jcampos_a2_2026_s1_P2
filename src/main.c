@@ -3,5 +3,6 @@
 
 int main(void)
 {
-    return run_cuda_test();
+    return run_sequential_simulation();
+    //return run_cuda_simulation();
 }

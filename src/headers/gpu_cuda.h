@@ -5,7 +5,7 @@
 extern "C" {
 #endif
 
-int run_cuda_test(void);
+int run_cuda_simulation(void);
 
 #ifdef __cplusplus
 }
