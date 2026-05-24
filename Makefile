@@ -6,7 +6,7 @@ CUDA_OBJ = gpu_cuda.obj
 
 ifeq ($(OS),Windows_NT)
 TARGET = main.exe
-CFLAGS = -Wall -g -IC:/msys64/ucrt64/include/SDL2
+CFLAGS = -Wall -g -IC:/msys64/ucrt64/include
 LIBS = -LC:/msys64/ucrt64/lib -lmingw32 -lSDL2main -lSDL2
 REMOVE = del /Q
 VCVARS64 = C:\Program Files\Microsoft Visual Studio\18\Community\VC\Auxiliary\Build\vcvars64.bat

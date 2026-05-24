@@ -2,8 +2,10 @@
 #define GPU_CUDA_H
 
 // configuracion de simulacion
-#define GPU_HEIGHT 300
-#define GPU_WIDTH 300
+#define GPU_HEIGHT 8192
+#define GPU_WIDTH 8192
+
+// pasos para benchmark
 #define GPU_SIM_STEPS 5000
 
 // parametros del modelo Gray-Scott

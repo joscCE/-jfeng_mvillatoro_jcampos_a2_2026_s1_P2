@@ -6,7 +6,7 @@
 #define WIDTH 300
 
 // pasos para benchmark secuencial
-#define SEQ_SIM_STEPS 5000
+#define SEQ_SIM_STEPS 500
 
 // tamaño visual de cada celda
 #define CELL_SIZE 2
