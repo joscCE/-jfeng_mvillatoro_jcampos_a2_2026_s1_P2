@@ -73,3 +73,6 @@ build_run.bat
 # Executables por version
 main_gpu.exe
 main_seq.exe
+
+# Local helper commands
+run_main_local.txt

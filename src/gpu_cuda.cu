@@ -1,36 +1,32 @@
 #include <stdio.h>
 #include <cuda_runtime.h>
 
-#include "headers/secuencial.h"
 #include "headers/gpu_cuda.h"
 
 // coeficientes de difusion
-float Da = 1.0f;
-float Db = 1.5f;
+float Da = GPU_DA;
+float Db = GPU_DB;
 
 // diferencial de tiempo
-float dt = 1.0f;
+float dt = GPU_DT;
 
 // entrega y desaparicion
-float feed = 0.055f;
-float kill = 1.062f;
+float feed = GPU_FEED;
+float kill = GPU_KILL;
 
 // matrices actuales
-float A[HEIGHT][WIDTH];
-float B[HEIGHT][WIDTH];
+float A[GPU_HEIGHT][GPU_WIDTH];
+float B[GPU_HEIGHT][GPU_WIDTH];
 
 // matrices siguientes
-float A_next[HEIGHT][WIDTH];
-float B_next[HEIGHT][WIDTH];
+float A_next[GPU_HEIGHT][GPU_WIDTH];
+float B_next[GPU_HEIGHT][GPU_WIDTH];
 
 // memoria de GPU
 static float* d_A = NULL;
 static float* d_B = NULL;
 static float* d_A_next = NULL;
 static float* d_B_next = NULL;
-
-// pasos a simular para benchmark
-#define SIM_STEPS 5000
 
 static int check_cuda(cudaError_t err, const char* where)
 {
@@ -55,11 +51,11 @@ __global__ void update_step_kernel(
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
 	int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (i <= 0 || i >= HEIGHT - 1 || j <= 0 || j >= WIDTH - 1) {
+	if (i <= 0 || i >= GPU_HEIGHT - 1 || j <= 0 || j >= GPU_WIDTH - 1) {
 		return;
 	}
 
-	int idx = i * WIDTH + j;
+	int idx = i * GPU_WIDTH + j;
 
 	float Aij = A_cur[idx];
 	float Bij = B_cur[idx];
@@ -67,28 +63,28 @@ __global__ void update_step_kernel(
 	float lapA =
 		-1.0f * Aij
 		+ 0.2f * (
-			A_cur[(i + 1) * WIDTH + j] +
-			A_cur[(i - 1) * WIDTH + j] +
-			A_cur[i * WIDTH + (j + 1)] +
-			A_cur[i * WIDTH + (j - 1)])
+			A_cur[(i + 1) * GPU_WIDTH + j] +
+			A_cur[(i - 1) * GPU_WIDTH + j] +
+			A_cur[i * GPU_WIDTH + (j + 1)] +
+			A_cur[i * GPU_WIDTH + (j - 1)])
 		+ 0.05f * (
-			A_cur[(i + 1) * WIDTH + (j + 1)] +
-			A_cur[(i + 1) * WIDTH + (j - 1)] +
-			A_cur[(i - 1) * WIDTH + (j + 1)] +
-			A_cur[(i - 1) * WIDTH + (j - 1)]);
+			A_cur[(i + 1) * GPU_WIDTH + (j + 1)] +
+			A_cur[(i + 1) * GPU_WIDTH + (j - 1)] +
+			A_cur[(i - 1) * GPU_WIDTH + (j + 1)] +
+			A_cur[(i - 1) * GPU_WIDTH + (j - 1)]);
 
 	float lapB =
 		-1.0f * Bij
 		+ 0.2f * (
-			B_cur[(i + 1) * WIDTH + j] +
-			B_cur[(i - 1) * WIDTH + j] +
-			B_cur[i * WIDTH + (j + 1)] +
-			B_cur[i * WIDTH + (j - 1)])
+			B_cur[(i + 1) * GPU_WIDTH + j] +
+			B_cur[(i - 1) * GPU_WIDTH + j] +
+			B_cur[i * GPU_WIDTH + (j + 1)] +
+			B_cur[i * GPU_WIDTH + (j - 1)])
 		+ 0.05f * (
-			B_cur[(i + 1) * WIDTH + (j + 1)] +
-			B_cur[(i + 1) * WIDTH + (j - 1)] +
-			B_cur[(i - 1) * WIDTH + (j + 1)] +
-			B_cur[(i - 1) * WIDTH + (j - 1)]);
+			B_cur[(i + 1) * GPU_WIDTH + (j + 1)] +
+			B_cur[(i + 1) * GPU_WIDTH + (j - 1)] +
+			B_cur[(i - 1) * GPU_WIDTH + (j + 1)] +
+			B_cur[(i - 1) * GPU_WIDTH + (j - 1)]);
 
 	float reaction = Aij * Bij * Bij;
 
@@ -112,11 +108,11 @@ __global__ void copy_step_kernel(float* A_cur, float* B_cur, const float* A_nxt,
 	int i = blockIdx.y * blockDim.y + threadIdx.y;
 	int j = blockIdx.x * blockDim.x + threadIdx.x;
 
-	if (i >= HEIGHT || j >= WIDTH) {
+	if (i >= GPU_HEIGHT || j >= GPU_WIDTH) {
 		return;
 	}
 
-	int idx = i * WIDTH + j;
+	int idx = i * GPU_WIDTH + j;
 	A_cur[idx] = A_nxt[idx];
 	B_cur[idx] = B_nxt[idx];
 }
@@ -126,8 +122,8 @@ __global__ void copy_step_kernel(float* A_cur, float* B_cur, const float* A_nxt,
 //--------------------------------------------------
 void init_simulation()
 {
-	for (int i = 0; i < HEIGHT; i++) {
-		for (int j = 0; j < WIDTH; j++) {
+	for (int i = 0; i < GPU_HEIGHT; i++) {
+		for (int j = 0; j < GPU_WIDTH; j++) {
 			A[i][j] = 1.0f;
 			B[i][j] = 0.0f;
 			A_next[i][j] = 1.0f;
@@ -135,8 +131,8 @@ void init_simulation()
 		}
 	}
 
-	for (int i = HEIGHT / 2 - 5; i < HEIGHT / 2 + 5; i++) {
-		for (int j = WIDTH / 2 - 5; j < WIDTH / 2 + 5; j++) {
+	for (int i = GPU_HEIGHT / 2 - 5; i < GPU_HEIGHT / 2 + 5; i++) {
+		for (int j = GPU_WIDTH / 2 - 5; j < GPU_WIDTH / 2 + 5; j++) {
 			B[i][j] = 1.0f;
 		}
 	}
@@ -144,7 +140,7 @@ void init_simulation()
 
 static int prepare_device_buffers()
 {
-	size_t bytes = (size_t)HEIGHT * (size_t)WIDTH * sizeof(float);
+	size_t bytes = (size_t)GPU_HEIGHT * (size_t)GPU_WIDTH * sizeof(float);
 
 	if (!check_cuda(cudaMalloc((void**)&d_A, bytes), "cudaMalloc d_A")) return 0;
 	if (!check_cuda(cudaMalloc((void**)&d_B, bytes), "cudaMalloc d_B")) return 0;
@@ -177,7 +173,7 @@ static void free_device_buffers()
 void simulate_step()
 {
 	dim3 block(16, 16);
-	dim3 grid((WIDTH + block.x - 1) / block.x, (HEIGHT + block.y - 1) / block.y);
+	dim3 grid((GPU_WIDTH + block.x - 1) / block.x, (GPU_HEIGHT + block.y - 1) / block.y);
 
 	update_step_kernel<<<grid, block>>>(d_A, d_B, d_A_next, d_B_next, Da, Db, dt, feed, kill);
 	copy_step_kernel<<<grid, block>>>(d_A, d_B, d_A_next, d_B_next);
@@ -225,7 +221,7 @@ int run_cuda_simulation(void)
 	}
 
 	check_cuda(cudaEventRecord(start_event), "cudaEventRecord start");
-	for (int step = 0; step < SIM_STEPS; step++) {
+	for (int step = 0; step < GPU_SIM_STEPS; step++) {
 		simulate_step();
 	}
 	if (!check_cuda(cudaGetLastError(), "kernel launch")) {
@@ -240,13 +236,13 @@ int run_cuda_simulation(void)
 	float elapsed_ms = 0.0f;
 	check_cuda(cudaEventElapsedTime(&elapsed_ms, start_event, stop_event), "cudaEventElapsedTime");
 
-	size_t bytes = (size_t)HEIGHT * (size_t)WIDTH * sizeof(float);
+	size_t bytes = (size_t)GPU_HEIGHT * (size_t)GPU_WIDTH * sizeof(float);
 	check_cuda(cudaMemcpy(A, d_A, bytes, cudaMemcpyDeviceToHost), "copy A D2H");
 	check_cuda(cudaMemcpy(B, d_B, bytes, cudaMemcpyDeviceToHost), "copy B D2H");
 
-	printf("Simulacion CUDA completada en %d pasos\n", SIM_STEPS);
+	printf("Simulacion CUDA completada en %d pasos\n", GPU_SIM_STEPS);
 	printf("Tiempo total: %.3f ms (%.6f s)\n", elapsed_ms, elapsed_ms / 1000.0f);
-	printf("Muestra centro -> A: %.6f, B: %.6f\n", A[HEIGHT / 2][WIDTH / 2], B[HEIGHT / 2][WIDTH / 2]);
+	printf("Muestra centro -> A: %.6f, B: %.6f\n", A[GPU_HEIGHT / 2][GPU_WIDTH / 2], B[GPU_HEIGHT / 2][GPU_WIDTH / 2]);
 
 	cudaEventDestroy(start_event);
 	cudaEventDestroy(stop_event);

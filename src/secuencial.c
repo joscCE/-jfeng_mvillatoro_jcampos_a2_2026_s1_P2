@@ -158,77 +158,88 @@ void draw(SDL_Renderer* renderer)
 //--------------------------------------------------
 // Main (secuencial)
 //--------------------------------------------------
-int run_sequential_simulation(void)
+int run_sequential_simulation(int visual_mode)
 {
-	//--------------------------------------------------
-	// Inicializar SDL
-	//--------------------------------------------------
-	if(SDL_Init(SDL_INIT_VIDEO) < 0){
-		printf("Error inicializando SDL\n");
-		return 1;
-	}
-
-	SDL_Window* window = SDL_CreateWindow(
-		"Reaction Diffusion",
-		SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED,
-		WINDOW_WIDTH,
-		WINDOW_HEIGHT,
-		0
-	);
-
-	if(window == NULL){
-		printf("Error creando ventana\n");
-		return 1;
-	}
-
-	SDL_Renderer* renderer = SDL_CreateRenderer(
-		window,
-		-1,
-		SDL_RENDERER_ACCELERATED
-	);
-
-	if(renderer == NULL){
-		printf("Error creando renderer\n");
-		return 1;
-	}
-
 	//--------------------------------------------------
 	// Inicializar simulación
 	//--------------------------------------------------
 	init_simulation();
 
-	//--------------------------------------------------
-	// Loop principal
-	//--------------------------------------------------
-	int running = 1;
-	SDL_Event event;
-
-	while(running){
-
-		// eventos
-		while(SDL_PollEvent(&event)){
-			if(event.type == SDL_QUIT){
-				running = 0;
-			}
+	if(visual_mode == 1){
+		//--------------------------------------------------
+		// Modo visual con SDL
+		//--------------------------------------------------
+		if(SDL_Init(SDL_INIT_VIDEO) < 0){
+			printf("Error inicializando SDL\n");
+			return 1;
 		}
 
-		// avanzar simulación
-		simulate_step();
+		SDL_Window* window = SDL_CreateWindow(
+			"Reaction Diffusion",
+			SDL_WINDOWPOS_CENTERED,
+			SDL_WINDOWPOS_CENTERED,
+			WINDOW_WIDTH,
+			WINDOW_HEIGHT,
+			0
+		);
 
-		// dibujar
-		draw(renderer);
+		if(window == NULL){
+			printf("Error creando ventana\n");
+			SDL_Quit();
+			return 1;
+		}
 
-		// pequeña pausa para no usar 100% CPU
-		SDL_Delay(16);
+		SDL_Renderer* renderer = SDL_CreateRenderer(
+			window,
+			-1,
+			SDL_RENDERER_ACCELERATED
+		);
+
+		if(renderer == NULL){
+			printf("Error creando renderer\n");
+			SDL_DestroyWindow(window);
+			SDL_Quit();
+			return 1;
+		}
+
+		int running = 1;
+		SDL_Event event;
+
+		while(running){
+			while(SDL_PollEvent(&event)){
+				if(event.type == SDL_QUIT){
+					running = 0;
+				}
+			}
+
+			simulate_step();
+			draw(renderer);
+			SDL_Delay(16);
+		}
+
+		SDL_DestroyRenderer(renderer);
+		SDL_DestroyWindow(window);
+		SDL_Quit();
+		return 0;
 	}
 
 	//--------------------------------------------------
-	// Limpiar SDL
+	// Benchmark secuencial (solo computación)
 	//--------------------------------------------------
-	SDL_DestroyRenderer(renderer);
-	SDL_DestroyWindow(window);
-	SDL_Quit();
+	Uint64 start_counter = SDL_GetPerformanceCounter();
+
+	for(int step=0; step<SEQ_SIM_STEPS; step++){
+		simulate_step();
+	}
+
+	Uint64 end_counter = SDL_GetPerformanceCounter();
+	double elapsed_seconds =
+		(double)(end_counter - start_counter) /
+		(double)SDL_GetPerformanceFrequency();
+
+	printf("Simulacion secuencial completada en %d pasos\n", SEQ_SIM_STEPS);
+	printf("Tiempo total: %.3f ms (%.6f s)\n", elapsed_seconds * 1000.0, elapsed_seconds);
+	printf("Muestra centro -> A: %.6f, B: %.6f\n", A[HEIGHT / 2][WIDTH / 2], B[HEIGHT / 2][WIDTH / 2]);
 
 	return 0;
 }
