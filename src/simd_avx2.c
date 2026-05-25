@@ -1,0 +1,233 @@
+#include <stdio.h>
+#include <immintrin.h> // Intrínsecos AVX2
+#include <SDL2/SDL.h>
+
+#include "../src/headers/secuencial.h" 
+#include "../src/headers/simd_avx2.h"
+
+// Traer las constantes físicas definidas en secuencial
+extern float Da, Db, dt, feed, kill;
+
+// Punteros dinámicos para evitar el bucle de copia manual
+static float* A_ptr = NULL;
+static float* B_ptr = NULL;
+static float* A_next_ptr = NULL;
+static float* B_next_ptr = NULL;
+
+//--------------------------------------------------
+// Inicializar matrices asignando memoria alineada a 32 bytes (AVX2)
+//--------------------------------------------------
+static void init_simd_simulation()
+{
+    // Alinear a 32 bytes es crucial para que _mm256_load_ps y _mm256_store_ps no fallen
+    size_t matrix_size = HEIGHT * WIDTH * sizeof(float);
+    
+    A_ptr      = (float*)_mm_malloc(matrix_size, 32);
+    B_ptr      = (float*)_mm_malloc(matrix_size, 32);
+    A_next_ptr = (float*)_mm_malloc(matrix_size, 32);
+    B_next_ptr = (float*)_mm_malloc(matrix_size, 32);
+
+    for (int i = 0; i < HEIGHT; i++) {
+        for (int j = 0; j < WIDTH; j++) {
+            int idx = i * WIDTH + j;
+            A_ptr[idx] = 1.0f;
+            B_ptr[idx] = 0.0f;
+            A_next_ptr[idx] = 1.0f;
+            B_next_ptr[idx] = 0.0f;
+        }
+    }
+
+    // Gota inicial de B en el centro
+    for (int i = HEIGHT / 2 - 5; i < HEIGHT / 2 + 5; i++) {
+        for (int j = WIDTH / 2 - 5; j < WIDTH / 2 + 5; j++) {
+            B_ptr[i * WIDTH + j] = 1.0f;
+        }
+    }
+}
+
+//--------------------------------------------------
+// Liberar memoria al terminar
+//--------------------------------------------------
+static void free_simd_simulation()
+{
+    _mm_free(A_ptr);
+    _mm_free(B_ptr);
+    _mm_free(A_next_ptr);
+    _mm_free(B_next_ptr);
+}
+
+//--------------------------------------------------
+// Un paso de simulación optimizado con AVX2
+//--------------------------------------------------
+static void simulate_step_avx2()
+{
+    __m256 v_Da   = _mm256_set1_ps(Da);
+    __m256 v_Db   = _mm256_set1_ps(Db);
+    __m256 v_dt   = _mm256_set1_ps(dt);
+    __m256 v_feed = _mm256_set1_ps(feed);
+    
+    __m256 v_one  = _mm256_set1_ps(1.0f);
+    __m256 v_zero = _mm256_set1_ps(0.0f);
+    
+    __m256 w_center   = _mm256_set1_ps(-1.0f);
+    __m256 w_adjacent = _mm256_set1_ps(0.2f);
+    __m256 w_diagonal = _mm256_set1_ps(0.05f);
+    __m256 v_kill_plus_feed = _mm256_set1_ps(kill + feed);
+
+    for (int i = 1; i < HEIGHT - 1; i++) {
+        int idx_row      = i * WIDTH;
+        int idx_row_up   = (i - 1) * WIDTH;
+        int idx_row_down = (i + 1) * WIDTH;
+
+        for (int j = 1; j < WIDTH - 1; j += 8) {
+            
+            // Manejo de remanente si la fila no termina de ajustar en bloques de 8
+            if (j + 8 > WIDTH - 1) {
+                for (int r = j; r < WIDTH - 1; r++) {
+                    int idx = idx_row + r;
+                    float reaction = A_ptr[idx] * B_ptr[idx] * B_ptr[idx];
+                    
+                    float lapA = -1.0f * A_ptr[idx] 
+                        + 0.2f * (A_ptr[idx_row_down + r] + A_ptr[idx_row_up + r] + A_ptr[idx + 1] + A_ptr[idx - 1])
+                        + 0.05f * (A_ptr[idx_row_down + r + 1] + A_ptr[idx_row_down + r - 1] + A_ptr[idx_row_up + r + 1] + A_ptr[idx_row_up + r - 1]);
+                        
+                    float lapB = -1.0f * B_ptr[idx] 
+                        + 0.2f * (B_ptr[idx_row_down + r] + B_ptr[idx_row_up + r] + B_ptr[idx + 1] + B_ptr[idx - 1])
+                        + 0.05f * (B_ptr[idx_row_down + r + 1] + B_ptr[idx_row_down + r - 1] + B_ptr[idx_row_up + r + 1] + B_ptr[idx_row_up + r - 1]);
+
+                    A_next_ptr[idx] = A_ptr[idx] + (Da * lapA - reaction + feed * (1.0f - A_ptr[idx])) * dt;
+                    B_next_ptr[idx] = B_ptr[idx] + (Db * lapB + reaction - B_ptr[idx] * (kill + feed)) * dt;
+
+                    if (A_next_ptr[idx] < 0) A_next_ptr[idx] = 0; if (A_next_ptr[idx] > 1) A_next_ptr[idx] = 1;
+                    if (B_next_ptr[idx] < 0) B_next_ptr[idx] = 0; if (B_next_ptr[idx] > 1) B_next_ptr[idx] = 1;
+                }
+                break;
+            }
+
+            // --- PROCESAR COMPONENTE A ---
+            __m256 a_center = _mm256_loadu_ps(&A_ptr[idx_row + j]);
+            __m256 a_up     = _mm256_loadu_ps(&A_ptr[idx_row_up + j]);
+            __m256 a_down   = _mm256_loadu_ps(&A_ptr[idx_row_down + j]);
+            __m256 a_left   = _mm256_loadu_ps(&A_ptr[idx_row + j - 1]);
+            __m256 a_right  = _mm256_loadu_ps(&A_ptr[idx_row + j + 1]);
+            
+            __m256 a_tl     = _mm256_loadu_ps(&A_ptr[idx_row_up + j - 1]);
+            __m256 a_tr     = _mm256_loadu_ps(&A_ptr[idx_row_up + j + 1]);
+            __m256 a_bl     = _mm256_loadu_ps(&A_ptr[idx_row_down + j - 1]);
+            __m256 a_br     = _mm256_loadu_ps(&A_ptr[idx_row_down + j + 1]);
+
+            __m256 lapA = _mm256_mul_ps(a_center, w_center);
+            __m256 sum_adjA = _mm256_add_ps(_mm256_add_ps(a_up, a_down), _mm256_add_ps(a_left, a_right));
+            lapA = _mm256_add_ps(lapA, _mm256_mul_ps(sum_adjA, w_adjacent));
+            __m256 sum_diagA = _mm256_add_ps(_mm256_add_ps(a_tl, a_tr), _mm256_add_ps(a_bl, a_br));
+            lapA = _mm256_add_ps(lapA, _mm256_mul_ps(sum_diagA, w_diagonal));
+
+            // --- PROCESAR COMPONENTE B ---
+            __m256 b_center = _mm256_loadu_ps(&B_ptr[idx_row + j]);
+            __m256 b_up     = _mm256_loadu_ps(&B_ptr[idx_row_up + j]);
+            __m256 b_down   = _mm256_loadu_ps(&B_ptr[idx_row_down + j]);
+            __m256 b_left   = _mm256_loadu_ps(&B_ptr[idx_row + j - 1]);
+            __m256 b_right  = _mm256_loadu_ps(&B_ptr[idx_row + j + 1]);
+            
+            __m256 b_tl     = _mm256_loadu_ps(&B_ptr[idx_row_up + j - 1]);
+            __m256 b_tr     = _mm256_loadu_ps(&B_ptr[idx_row_up + j + 1]);
+            __m256 b_bl     = _mm256_loadu_ps(&B_ptr[idx_row_down + j - 1]);
+            __m256 b_br     = _mm256_loadu_ps(&B_ptr[idx_row_down + j + 1]);
+
+            __m256 lapB = _mm256_mul_ps(b_center, w_center);
+            __m256 sum_adjB = _mm256_add_ps(_mm256_add_ps(b_up, b_down), _mm256_add_ps(b_left, b_right));
+            lapB = _mm256_add_ps(lapB, _mm256_mul_ps(sum_adjB, w_adjacent));
+            __m256 sum_diagB = _mm256_add_ps(_mm256_add_ps(b_tl, b_tr), _mm256_add_ps(b_bl, b_br));
+            lapB = _mm256_add_ps(lapB, _mm256_mul_ps(sum_diagB, w_diagonal));
+
+            // --- REACCIÓN GRUPO ---
+            __m256 reaction = _mm256_mul_ps(a_center, _mm256_mul_ps(b_center, b_center));
+
+            __m256 dA = _mm256_add_ps(_mm256_sub_ps(_mm256_mul_ps(v_Da, lapA), reaction), _mm256_mul_ps(v_feed, _mm256_sub_ps(v_one, a_center)));
+            __m256 dB = _mm256_sub_ps(_mm256_add_ps(_mm256_mul_ps(v_Db, lapB), reaction), _mm256_mul_ps(b_center, v_kill_plus_feed));
+
+            __m256 a_next_val = _mm256_add_ps(a_center, _mm256_mul_ps(dA, v_dt));
+            __m256 b_next_val = _mm256_add_ps(b_center, _mm256_mul_ps(dB, v_dt));
+
+            // Clamping [0.0, 1.0]
+            a_next_val = _mm256_max_ps(v_zero, _mm256_min_ps(v_one, a_next_val));
+            b_next_val = _mm256_max_ps(v_zero, _mm256_min_ps(v_one, b_next_val));
+
+            _mm256_storeu_ps(&A_next_ptr[idx_row + j], a_next_val);
+            _mm256_storeu_ps(&B_next_ptr[idx_row + j], b_next_val);
+        }
+    }
+    
+    float* tempA = A_ptr; A_ptr = A_next_ptr; A_next_ptr = tempA;
+    float* tempB = B_ptr; B_ptr = B_next_ptr; B_next_ptr = tempB;
+}
+
+//--------------------------------------------------
+// Dibujar con SDL desde los punteros SIMD
+//--------------------------------------------------
+static void draw_simd(SDL_Renderer* renderer)
+{
+    SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+    SDL_RenderClear(renderer);
+
+    for (int i = 0; i < HEIGHT; i++) {
+        for (int j = 0; j < WIDTH; j++) {
+            int c = (int)(B_ptr[i * WIDTH + j] * 255.0f);
+            if (c < 0) c = 0;
+            if (c > 255) c = 255;
+
+            SDL_SetRenderDrawColor(renderer, c, c, c, 255);
+            SDL_Rect rect = { j * CELL_SIZE, i * CELL_SIZE, CELL_SIZE, CELL_SIZE };
+            SDL_RenderFillRect(renderer, &rect);
+        }
+    }
+    SDL_RenderPresent(renderer);
+}
+
+//--------------------------------------------------
+// Función Principal del Módulo SIMD
+//--------------------------------------------------
+int run_simd_simulation(int visual_mode)
+{
+    init_simd_simulation();
+
+    if (visual_mode == 1) {
+        if (SDL_Init(SDL_INIT_VIDEO) < 0) return 1;
+        SDL_Window* window = SDL_CreateWindow("Reaction Diffusion - AVX2", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH, WINDOW_HEIGHT, 0);
+        if (!window) { SDL_Quit(); return 1; }
+        SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+        if (!renderer) { SDL_DestroyWindow(window); SDL_Quit(); return 1; }
+
+        int running = 1;
+        SDL_Event event;
+        while (running) {
+            while (SDL_PollEvent(&event)) {
+                if (event.type == SDL_QUIT) running = 0;
+            }
+            simulate_step_avx2();
+            draw_simd(renderer);
+            SDL_Delay(16);
+        }
+
+        SDL_DestroyRenderer(renderer);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        free_simd_simulation();
+        return 0;
+    }
+
+    // MODO BENCHMARK
+    Uint64 start_counter = SDL_GetPerformanceCounter();
+    for (int step = 0; step < SIMD_SIM_STEPS; step++) {
+        simulate_step_avx2();
+    }
+    Uint64 end_counter = SDL_GetPerformanceCounter();
+    
+    double elapsed_seconds = (double)(end_counter - start_counter) / (double)SDL_GetPerformanceFrequency();
+    printf("\n--- SIMULACIÓN SIMD AVX2 COMPLETADA (%d pasos) ---\n", SIMD_SIM_STEPS);
+    printf("Tiempo de cómputo: %.3f ms (%.6f s)\n", elapsed_seconds * 1000.0, elapsed_seconds);
+    printf("Muestra centro -> A: %.6f, B: %.6f\n", A_ptr[(HEIGHT/2)*WIDTH + (WIDTH/2)], B_ptr[(HEIGHT/2)*WIDTH + (WIDTH/2)]);
+
+    free_simd_simulation();
+    return 0;
+}
