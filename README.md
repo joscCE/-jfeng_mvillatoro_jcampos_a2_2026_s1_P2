@@ -20,3 +20,6 @@ tambien compilarla
 gcc main.c -o main $(sdl2-config --cflags --libs)
 
 o con el make
+
+
+gcc -O3 -mavx2 -mfma -fPIE src/main.c src/secuencial.c src/simd_avx2.c -o main -lSDL2

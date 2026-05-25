@@ -2,6 +2,7 @@
 #include <SDL2/SDL.h>
 
 #include "headers/secuencial.h"
+#include "headers/config.h"
 
 // coeficientes de difusión
 float Da = 1.0f;
@@ -228,7 +229,7 @@ int run_sequential_simulation(int visual_mode)
 	//--------------------------------------------------
 	Uint64 start_counter = SDL_GetPerformanceCounter();
 
-	for(int step=0; step<SEQ_SIM_STEPS; step++){
+	for(int step=0; step<SIM_STEPS; step++){
 		simulate_step();
 	}
 
@@ -237,7 +238,7 @@ int run_sequential_simulation(int visual_mode)
 		(double)(end_counter - start_counter) /
 		(double)SDL_GetPerformanceFrequency();
 
-	printf("Simulacion secuencial completada en %d pasos\n", SEQ_SIM_STEPS);
+	printf("Simulacion secuencial completada en %d pasos\n", SIM_STEPS);
 	printf("Tiempo total: %.3f ms (%.6f s)\n", elapsed_seconds * 1000.0, elapsed_seconds);
 	printf("Muestra centro -> A: %.6f, B: %.6f\n", A[HEIGHT / 2][WIDTH / 2], B[HEIGHT / 2][WIDTH / 2]);
 

@@ -2,8 +2,8 @@
 #include <immintrin.h> // Intrínsecos AVX2
 #include <SDL2/SDL.h>
 
-#include "../src/headers/secuencial.h" 
-#include "../src/headers/simd_avx2.h"
+#include "headers/simd_avx2.h"
+#include "headers/config.h"
 
 // Traer las constantes físicas definidas en secuencial
 extern float Da, Db, dt, feed, kill;
@@ -157,7 +157,7 @@ static void simulate_step_avx2()
             _mm256_storeu_ps(&B_next_ptr[idx_row + j], b_next_val);
         }
     }
-    
+
     float* tempA = A_ptr; A_ptr = A_next_ptr; A_next_ptr = tempA;
     float* tempB = B_ptr; B_ptr = B_next_ptr; B_next_ptr = tempB;
 }
@@ -218,13 +218,13 @@ int run_simd_simulation(int visual_mode)
 
     // MODO BENCHMARK
     Uint64 start_counter = SDL_GetPerformanceCounter();
-    for (int step = 0; step < SIMD_SIM_STEPS; step++) {
+    for (int step = 0; step < SIM_STEPS; step++) {
         simulate_step_avx2();
     }
     Uint64 end_counter = SDL_GetPerformanceCounter();
     
     double elapsed_seconds = (double)(end_counter - start_counter) / (double)SDL_GetPerformanceFrequency();
-    printf("\n--- SIMULACIÓN SIMD AVX2 COMPLETADA (%d pasos) ---\n", SIMD_SIM_STEPS);
+    printf("\n--- SIMULACIÓN SIMD AVX2 COMPLETADA (%d pasos) ---\n", SIM_STEPS);
     printf("Tiempo de cómputo: %.3f ms (%.6f s)\n", elapsed_seconds * 1000.0, elapsed_seconds);
     printf("Muestra centro -> A: %.6f, B: %.6f\n", A_ptr[(HEIGHT/2)*WIDTH + (WIDTH/2)], B_ptr[(HEIGHT/2)*WIDTH + (WIDTH/2)]);
 
