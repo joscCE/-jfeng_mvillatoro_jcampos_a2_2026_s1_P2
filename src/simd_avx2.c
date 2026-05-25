@@ -1,8 +1,8 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <immintrin.h> // Intrínsecos AVX2
 #include <SDL2/SDL.h>
 
-#include "headers/simd_avx2.h"
 #include "headers/config.h"
 
 // Traer las constantes físicas definidas en secuencial
@@ -230,4 +230,23 @@ int run_simd_simulation(int visual_mode)
 
     free_simd_simulation();
     return 0;
+}
+
+int main(int argc, char* argv[])
+{
+    if (argc != 2) {
+        printf("Uso: %s <modo>\n", argv[0]);
+        printf("  0 = Benchmark\n");
+        printf("  1 = Visual\n");
+        return 1;
+    }
+
+    int modo = atoi(argv[1]);
+
+    if (modo != 0 && modo != 1) {
+        printf("Error: modo invalido '%s'. Use 0 o 1.\n", argv[1]);
+        return 1;
+    }
+
+    return run_simd_simulation(modo);
 }

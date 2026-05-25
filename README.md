@@ -21,5 +21,7 @@ gcc main.c -o main $(sdl2-config --cflags --libs)
 
 o con el make
 
+Para version SIMD
+gcc -O3 -mavx2 -mfma -fPIE src/simd_avx2.c src/secuencial.c -o simd -lSDL2
 
-gcc -O3 -mavx2 -mfma -fPIE src/main.c src/secuencial.c src/simd_avx2.c -o main -lSDL2
+perf stat -e fp_arith_inst_retired.256b_packed_single ./simd
