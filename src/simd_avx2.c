@@ -19,7 +19,7 @@ static float* B_next_ptr = NULL;
 //--------------------------------------------------
 static void init_simd_simulation()
 {
-    // Alinear a 32 bytes es crucial para que _mm256_load_ps y _mm256_store_ps no fallen
+    // Alinear a 32 bytes para que _mm256_load_ps y _mm256_store_ps no fallen
     size_t matrix_size = HEIGHT * WIDTH * sizeof(float);
     
     A_ptr      = (float*)_mm_malloc(matrix_size, 32);
@@ -61,6 +61,7 @@ static void free_simd_simulation()
 //--------------------------------------------------
 static void simulate_step_avx2()
 {
+    // Precalcular constantes en registros SIMD
     __m256 v_Da   = _mm256_set1_ps(Da);
     __m256 v_Db   = _mm256_set1_ps(Db);
     __m256 v_dt   = _mm256_set1_ps(dt);
@@ -74,11 +75,13 @@ static void simulate_step_avx2()
     __m256 w_diagonal = _mm256_set1_ps(0.05f);
     __m256 v_kill_plus_feed = _mm256_set1_ps(kill + feed);
 
+    // Procesar cada celda, saltando de 8 en 8
     for (int i = 1; i < HEIGHT - 1; i++) {
         int idx_row      = i * WIDTH;
         int idx_row_up   = (i - 1) * WIDTH;
         int idx_row_down = (i + 1) * WIDTH;
 
+        // calcula 8 celdas a la vez
         for (int j = 1; j < WIDTH - 1; j += 8) {
             
             // Manejo de remanente si la fila no termina de ajustar en bloques de 8
@@ -105,24 +108,30 @@ static void simulate_step_avx2()
             }
 
             // --- PROCESAR COMPONENTE A ---
+
+            // Cargar el centro, celdas j, j+1, ..., j+7
             __m256 a_center = _mm256_loadu_ps(&A_ptr[idx_row + j]);
+            // Cargar vecinos, cada uno también con 8 celdas contiguas
             __m256 a_up     = _mm256_loadu_ps(&A_ptr[idx_row_up + j]);
             __m256 a_down   = _mm256_loadu_ps(&A_ptr[idx_row_down + j]);
             __m256 a_left   = _mm256_loadu_ps(&A_ptr[idx_row + j - 1]);
             __m256 a_right  = _mm256_loadu_ps(&A_ptr[idx_row + j + 1]);
             
-            __m256 a_tl     = _mm256_loadu_ps(&A_ptr[idx_row_up + j - 1]);
-            __m256 a_tr     = _mm256_loadu_ps(&A_ptr[idx_row_up + j + 1]);
-            __m256 a_bl     = _mm256_loadu_ps(&A_ptr[idx_row_down + j - 1]);
-            __m256 a_br     = _mm256_loadu_ps(&A_ptr[idx_row_down + j + 1]);
+            __m256 a_tl     = _mm256_loadu_ps(&A_ptr[idx_row_up + j - 1]); // top left
+            __m256 a_tr     = _mm256_loadu_ps(&A_ptr[idx_row_up + j + 1]); // top right
+            __m256 a_bl     = _mm256_loadu_ps(&A_ptr[idx_row_down + j - 1]); // bottom left
+            __m256 a_br     = _mm256_loadu_ps(&A_ptr[idx_row_down + j + 1]); /// bottom right
 
+            // Calcular laplaciano para A usando la máscara de convolución
             __m256 lapA = _mm256_mul_ps(a_center, w_center);
-            __m256 sum_adjA = _mm256_add_ps(_mm256_add_ps(a_up, a_down), _mm256_add_ps(a_left, a_right));
-            lapA = _mm256_add_ps(lapA, _mm256_mul_ps(sum_adjA, w_adjacent));
-            __m256 sum_diagA = _mm256_add_ps(_mm256_add_ps(a_tl, a_tr), _mm256_add_ps(a_bl, a_br));
-            lapA = _mm256_add_ps(lapA, _mm256_mul_ps(sum_diagA, w_diagonal));
+            __m256 sum_adjA = _mm256_add_ps(_mm256_add_ps(a_up, a_down), _mm256_add_ps(a_left, a_right)); // Sumar 4 lados
+            lapA = _mm256_add_ps(lapA, _mm256_mul_ps(sum_adjA, w_adjacent)); 
+            __m256 sum_diagA = _mm256_add_ps(_mm256_add_ps(a_tl, a_tr), _mm256_add_ps(a_bl, a_br)); // Sumar 4 diagonales
+            lapA = _mm256_add_ps(lapA, _mm256_mul_ps(sum_diagA, w_diagonal)); 
 
             // --- PROCESAR COMPONENTE B ---
+
+            // Cargar el centro y vecinos para B
             __m256 b_center = _mm256_loadu_ps(&B_ptr[idx_row + j]);
             __m256 b_up     = _mm256_loadu_ps(&B_ptr[idx_row_up + j]);
             __m256 b_down   = _mm256_loadu_ps(&B_ptr[idx_row_down + j]);
@@ -141,11 +150,16 @@ static void simulate_step_avx2()
             lapB = _mm256_add_ps(lapB, _mm256_mul_ps(sum_diagB, w_diagonal));
 
             // --- REACCIÓN GRUPO ---
+
+            // Reaccion = A * B^2 para 8 celdas
             __m256 reaction = _mm256_mul_ps(a_center, _mm256_mul_ps(b_center, b_center));
 
+            // dA = Da * lapA - reaction + feed * (1.0f - A)
             __m256 dA = _mm256_add_ps(_mm256_sub_ps(_mm256_mul_ps(v_Da, lapA), reaction), _mm256_mul_ps(v_feed, _mm256_sub_ps(v_one, a_center)));
+            // dB = Db * lapB + reaction - B * (kill + feed)
             __m256 dB = _mm256_sub_ps(_mm256_add_ps(_mm256_mul_ps(v_Db, lapB), reaction), _mm256_mul_ps(b_center, v_kill_plus_feed));
 
+            // Euler: nuevo + viejo + d * dt
             __m256 a_next_val = _mm256_add_ps(a_center, _mm256_mul_ps(dA, v_dt));
             __m256 b_next_val = _mm256_add_ps(b_center, _mm256_mul_ps(dB, v_dt));
 
@@ -153,6 +167,7 @@ static void simulate_step_avx2()
             a_next_val = _mm256_max_ps(v_zero, _mm256_min_ps(v_one, a_next_val));
             b_next_val = _mm256_max_ps(v_zero, _mm256_min_ps(v_one, b_next_val));
 
+            // Escribir los 8 resultados de vuelta a memoria
             _mm256_storeu_ps(&A_next_ptr[idx_row + j], a_next_val);
             _mm256_storeu_ps(&B_next_ptr[idx_row + j], b_next_val);
         }
