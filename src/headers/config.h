@@ -6,7 +6,7 @@
 #define WIDTH 300
 
 // Pasos para los benchmarks 
-#define SIM_STEPS 500
+#define SIM_STEPS 5000
 
 // Configuración visual de la ventana SDL
 #define CELL_SIZE 2
