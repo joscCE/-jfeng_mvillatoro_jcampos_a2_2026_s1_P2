@@ -26,30 +26,20 @@ gcc -O3 -mavx2 -mfma -fPIE src/simd_avx2.c src/secuencial.c -o simd -lSDL2
 
 perf stat -e fp_arith_inst_retired.256b_packed_single ./simd
 
-### Sanity check (secuencial vs SIMD AVX2 vs CUDA)
+### Validacion (secuencial vs SIMD AVX2 vs CUDA)
 
-Se agrego un flujo manual para correr los 3 metodos con los mismos parametros
-de Gray-Scott (512x512, 5000 pasos), sumar todas las celdas de la matriz B final
-y escribir los resultados en un archivo `.txt`.
+Para correr los 3 metodos con los mismos parametros de 
+Gray-Scott (512x512, 5000 pasos), sumar todas las celdas 
+de la matriz B final y escribir los resultados en un archivo `.txt`.
 
-En Windows, ejecutar desde la raiz del proyecto:
+En Windows, ejecutar "cmd /c sanity_check.bat" desde root.
 
-```bat
-sanity_check.bat
-```
-
-Opcionalmente puedes indicar un archivo de salida:
-
-```bat
-sanity_check.bat mi_reporte.txt
-```
-
-El script compila y ejecuta en este orden:
+El script compila y ejecuta:
 1. secuencial
 2. SIMD AVX2
 3. CUDA
 
-Al finalizar, el archivo de salida contiene una linea por backend con el valor:
+Al final el archivo de salida contiene una linea por modelo con el valor de:
 
 ```text
 secuencial_sum_b=...
