@@ -250,3 +250,18 @@ int run_cuda_simulation(void)
 
 	return 0;
 }
+
+double cuda_sum_b(void)
+{
+	// Acumula B en host despues de copiar desde la GPU para comparar
+	// contra los resultados secuencial y SIMD.
+	double sum = 0.0;
+
+	for (int i = 0; i < GPU_HEIGHT; i++) {
+		for (int j = 0; j < GPU_WIDTH; j++) {
+			sum += (double)B[i][j];
+		}
+	}
+
+	return sum;
+}

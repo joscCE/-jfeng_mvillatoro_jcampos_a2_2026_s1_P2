@@ -13,6 +13,24 @@ static float* A_ptr = NULL;
 static float* B_ptr = NULL;
 static float* A_next_ptr = NULL;
 static float* B_next_ptr = NULL;
+// Conserva la suma final de B para consultarla despues de liberar memoria.
+static double last_sum_b = 0.0;
+
+static double sum_current_b()
+{
+    // Si la memoria SIMD ya fue liberada, se devuelve el ultimo valor cacheado.
+    if (B_ptr == NULL) {
+        return last_sum_b;
+    }
+
+    // Suma escalar de toda la grilla B para comparacion entre backends.
+    double sum = 0.0;
+    int total = HEIGHT * WIDTH;
+    for (int idx = 0; idx < total; idx++) {
+        sum += (double)B_ptr[idx];
+    }
+    return sum;
+}
 
 //--------------------------------------------------
 // Inicializar matrices asignando memoria alineada a 32 bytes (AVX2)
@@ -26,6 +44,8 @@ static void init_simd_simulation()
     B_ptr      = (float*)_mm_malloc(matrix_size, 32);
     A_next_ptr = (float*)_mm_malloc(matrix_size, 32);
     B_next_ptr = (float*)_mm_malloc(matrix_size, 32);
+    // Reinicia el acumulado para que cada corrida empiece limpia.
+    last_sum_b = 0.0;
 
     for (int i = 0; i < HEIGHT; i++) {
         for (int j = 0; j < WIDTH; j++) {
@@ -54,6 +74,12 @@ static void free_simd_simulation()
     _mm_free(B_ptr);
     _mm_free(A_next_ptr);
     _mm_free(B_next_ptr);
+
+    // Deja punteros nulos para evitar usos accidentales tras free.
+    A_ptr = NULL;
+    B_ptr = NULL;
+    A_next_ptr = NULL;
+    B_next_ptr = NULL;
 }
 
 //--------------------------------------------------
@@ -101,8 +127,10 @@ static void simulate_step_avx2()
                     A_next_ptr[idx] = A_ptr[idx] + (Da * lapA - reaction + feed * (1.0f - A_ptr[idx])) * dt;
                     B_next_ptr[idx] = B_ptr[idx] + (Db * lapB + reaction - B_ptr[idx] * (kill + feed)) * dt;
 
-                    if (A_next_ptr[idx] < 0) A_next_ptr[idx] = 0; if (A_next_ptr[idx] > 1) A_next_ptr[idx] = 1;
-                    if (B_next_ptr[idx] < 0) B_next_ptr[idx] = 0; if (B_next_ptr[idx] > 1) B_next_ptr[idx] = 1;
+                    if (A_next_ptr[idx] < 0) A_next_ptr[idx] = 0;
+                    if (A_next_ptr[idx] > 1) A_next_ptr[idx] = 1;
+                    if (B_next_ptr[idx] < 0) B_next_ptr[idx] = 0;
+                    if (B_next_ptr[idx] > 1) B_next_ptr[idx] = 1;
                 }
                 break;
             }
@@ -227,6 +255,8 @@ int run_simd_simulation(int visual_mode)
         SDL_DestroyRenderer(renderer);
         SDL_DestroyWindow(window);
         SDL_Quit();
+        // Guarda la suma final antes de liberar buffers SIMD.
+        last_sum_b = sum_current_b();
         free_simd_simulation();
         return 0;
     }
@@ -239,11 +269,19 @@ int run_simd_simulation(int visual_mode)
     Uint64 end_counter = SDL_GetPerformanceCounter();
     
     double elapsed_seconds = (double)(end_counter - start_counter) / (double)SDL_GetPerformanceFrequency();
+    // Guarda la suma final para que el caller la escriba en el reporte.
+    last_sum_b = sum_current_b();
     printf("\n--- SIMULACIÓN SIMD AVX2 COMPLETADA (%d pasos) ---\n", SIM_STEPS);
     printf("Tiempo de cómputo: %.3f ms (%.6f s)\n", elapsed_seconds * 1000.0, elapsed_seconds);
     printf("Muestra centro -> A: %.6f, B: %.6f\n", A_ptr[(HEIGHT/2)*WIDTH + (WIDTH/2)], B_ptr[(HEIGHT/2)*WIDTH + (WIDTH/2)]);
 
     free_simd_simulation();
     return 0;
+}
+
+double simd_last_sum_b(void)
+{
+    // API publica para leer el ultimo resultado agregado por SIMD.
+    return last_sum_b;
 }
 

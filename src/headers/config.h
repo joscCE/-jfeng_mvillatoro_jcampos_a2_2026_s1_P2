@@ -2,8 +2,8 @@
 #define CONFIG_H
 
 // Dimensiones globales de la simulación
-#define HEIGHT 300
-#define WIDTH 300
+#define HEIGHT 512
+#define WIDTH 512
 
 // Pasos para los benchmarks 
 #define SIM_STEPS 5000

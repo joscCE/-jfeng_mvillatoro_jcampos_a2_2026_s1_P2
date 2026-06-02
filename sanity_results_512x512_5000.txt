@@ -1,0 +1,6 @@
+Gray-Scott sanity check (512x512, 5000 pasos)
+Parametros: Da=1.0 Db=1.5 dt=1.0 feed=0.055 kill=1.062
+
+secuencial_sum_b=127356.380645618
+simd_avx2_sum_b=127366.466835782
+cuda_sum_b=127363.355863363

@@ -2,8 +2,8 @@
 #define GPU_CUDA_H
 
 // configuracion de simulacion
-#define GPU_HEIGHT 8192
-#define GPU_WIDTH 8192
+#define GPU_HEIGHT 512
+#define GPU_WIDTH 512
 
 // pasos para benchmark
 #define GPU_SIM_STEPS 5000
@@ -20,6 +20,8 @@ extern "C" {
 #endif
 
 int run_cuda_simulation(void);
+// Devuelve la suma total de la malla B copiada desde GPU al finalizar la corrida.
+double cuda_sum_b(void);
 
 #ifdef __cplusplus
 }

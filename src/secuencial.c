@@ -244,3 +244,18 @@ int run_sequential_simulation(int visual_mode)
 
 	return 0;
 }
+
+double sequential_sum_b(void)
+{
+	// Recorre la malla final de B para obtener un unico escalar comparable
+	// entre implementaciones (secuencial, SIMD y CUDA).
+	double sum = 0.0;
+
+	for (int i = 0; i < HEIGHT; i++) {
+		for (int j = 0; j < WIDTH; j++) {
+			sum += (double)B[i][j];
+		}
+	}
+
+	return sum;
+}
